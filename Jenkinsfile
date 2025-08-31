@@ -31,13 +31,17 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-               
+                # Update kubeconfig for EKS cluster
+                aws eks update-kubeconfig --region us-east-1 --name myapp-cluster
+
+                # Apply manifests
                 kubectl apply -f k8s/deployment.yaml
                 kubectl apply -f k8s/service.yaml
-        
+
+                # Update deployment image
                 kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:${BUILD_NUMBER} --record
 
-                
+                # Verify rollout
                 kubectl rollout status deployment/myapp-deployment
                 '''
             }
