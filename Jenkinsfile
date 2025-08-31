@@ -4,8 +4,6 @@ pipeline {
     environment {
         DOCKERHUB_USER = 'anand20003'
         DOCKER_IMAGE = "${DOCKERHUB_USER}/project2"
-        AWS_REGION = 'us-east-1'
-        CLUSTER_NAME = 'myapp-cluster'    
     }
 
     stages {
@@ -30,24 +28,16 @@ pipeline {
             }
         }
 
-        stage('Configure kubeconfig') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
-                    sh '''
-                        aws eks --region $AWS_REGION update-kubeconfig --name $CLUSTER_NAME
-                        kubectl get nodes
-                    '''
-                }
-            }
-        }
-
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
+               
                 kubectl apply -f k8s/deployment.yaml
                 kubectl apply -f k8s/service.yaml
-
+        
                 kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:${BUILD_NUMBER} --record
+
+                
                 kubectl rollout status deployment/myapp-deployment
                 '''
             }
