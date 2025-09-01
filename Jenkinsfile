@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-creds')
-        DOCKER_IMAGE = "anand20003/project2"
-        KUBECONFIG_CREDENTIALS = credentials('kubeconfig-cred')
+        DOCKER_REPO = "anand20003/project2"
+        AWS_REGION = "us-east-1"
+        IMAGE_TAG = "${env.BUILD_NUMBER}"   // unique tag for each build
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Anand-kumar-git/Project2.git'
             }
@@ -16,46 +16,49 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE:$BUILD_NUMBER .'
-                sh 'docker tag $DOCKER_IMAGE:$BUILD_NUMBER $DOCKER_IMAGE:latest'
+                sh """
+                echo "Building Docker image..."
+                docker build -t ${DOCKER_REPO}:${IMAGE_TAG} .
+                docker tag ${DOCKER_REPO}:${IMAGE_TAG} ${DOCKER_REPO}:latest
+                """
             }
         }
 
-        stage('Push to DockerHub') {
+        stage('Push Docker Image') {
             steps {
-                sh 'echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin'
-                sh 'docker push $DOCKER_IMAGE:$BUILD_NUMBER'
-                sh 'docker push $DOCKER_IMAGE:latest'
-            }
-        }
-
-        stage('Test Kubeconfig') {
-            steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG'),
-                    usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
-                    export AWS_REGION=us-east-1
-                    kubectl get nodes --kubeconfig=$KUBECONFIG
-                    '''
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker push ${DOCKER_REPO}:${IMAGE_TAG}
+                    docker push ${DOCKER_REPO}:latest
+                    """
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to EKS') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG'),
-                    usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
-                    export AWS_REGION=us-east-1
-                    kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:$BUILD_NUMBER --kubeconfig=$KUBECONFIG
-                    kubectl rollout status deployment/myapp-deployment --kubeconfig=$KUBECONFIG
-                    '''
-                }
+                sh """
+                echo "Updating kubeconfig..."
+                aws eks update-kubeconfig --region ${AWS_REGION} --name my-cluster
+
+                echo "Updating Kubernetes Deployment..."
+                kubectl set image deployment/myapp-deployment myapp=${DOCKER_REPO}:${IMAGE_TAG} --record || true
+
+                echo "Applying manifests..."
+                kubectl apply -f deployment.yaml
+                kubectl apply -f service.yaml
+                """
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful!"
+        }
+        failure {
+            echo "❌ Deployment failed. Check logs in Jenkins!"
         }
     }
 }
