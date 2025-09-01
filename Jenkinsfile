@@ -3,8 +3,8 @@ pipeline {
 
     environment {
         DOCKER_REPO = "anand20003/project2"
-        AWS_REGION = "us-east-1"
-        IMAGE_TAG = "${env.BUILD_NUMBER}"   // unique tag for each build
+        AWS_REGION  = "us-east-1"
+        IMAGE_TAG   = "${env.BUILD_NUMBER}"   // unique tag for each build
     }
 
     stages {
@@ -17,20 +17,24 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
-                echo "Building Docker image..."
-                docker build -t ${DOCKER_REPO}:${IMAGE_TAG} .
-                docker tag ${DOCKER_REPO}:${IMAGE_TAG} ${DOCKER_REPO}:latest
+                    echo "Building Docker image..."
+                    docker build -t ${DOCKER_REPO}:${IMAGE_TAG} .
+                    docker tag ${DOCKER_REPO}:${IMAGE_TAG} ${DOCKER_REPO}:latest
                 """
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh """
-                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                    docker push ${DOCKER_REPO}:${IMAGE_TAG}
-                    docker push ${DOCKER_REPO}:latest
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_REPO}:${IMAGE_TAG}
+                        docker push ${DOCKER_REPO}:latest
                     """
                 }
             }
@@ -39,15 +43,15 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 sh """
-                echo "Updating kubeconfig..."
-                aws eks update-kubeconfig --region ${AWS_REGION} --name my-cluster
+                    echo "Updating kubeconfig..."
+                    aws eks update-kubeconfig --region ${AWS_REGION} --name my-cluster
 
-                echo "Updating Kubernetes Deployment..."
-                kubectl set image deployment/myapp-deployment myapp=${DOCKER_REPO}:${IMAGE_TAG} --record || true
+                    echo "Deploying to Kubernetes..."
+                    kubectl set image deployment/myapp-deployment myapp=${DOCKER_REPO}:${IMAGE_TAG} || true
 
-                echo "Applying manifests..."
-                kubectl apply -f deployment.yaml
-                kubectl apply -f service.yaml
+                    # Apply Kubernetes manifests
+                    kubectl apply -f deployment.yaml
+                    kubectl apply -f service.yaml
                 """
             }
         }
