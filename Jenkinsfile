@@ -2,12 +2,13 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USER = 'anand20003'
-        DOCKER_IMAGE = "${DOCKERHUB_USER}/project2"
+        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-creds')
+        DOCKER_IMAGE = "anand20003/project2"
+        KUBECONFIG_CREDENTIALS = credentials('kubeconfig-cred')
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Anand-kumar-git/Project2.git'
             }
@@ -15,35 +16,35 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE:${BUILD_NUMBER} .'
+                sh 'docker build -t $DOCKER_IMAGE:$BUILD_NUMBER .'
+                sh 'docker tag $DOCKER_IMAGE:$BUILD_NUMBER $DOCKER_IMAGE:latest'
             }
         }
 
-        stage('Push To DockerHub') {
+        stage('Push to DockerHub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh 'echo $PASS | docker login -u $USER --password-stdin'
-                    sh 'docker push $DOCKER_IMAGE:${BUILD_NUMBER}'
+                sh 'echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin'
+                sh 'docker push $DOCKER_IMAGE:$BUILD_NUMBER'
+                sh 'docker push $DOCKER_IMAGE:latest'
+            }
+        }
+
+        stage('Test Kubeconfig') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG')]) {
+                    sh 'kubectl get nodes --kubeconfig=$KUBECONFIG'
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh '''
-                # Use IAM Role attached to EC2 for authentication
-                aws eks update-kubeconfig --region us-east-1 --name myapp-cluster
-
-                # Apply deployment and service
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
-
-                # Update image with the new build
-                kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:${BUILD_NUMBER} --record
-
-                # Wait for rollout to complete
-                kubectl rollout status deployment/myapp-deployment
-                '''
+                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG')]) {
+                    sh '''
+                    kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:$BUILD_NUMBER --kubeconfig=$KUBECONFIG
+                    kubectl rollout status deployment/myapp-deployment --kubeconfig=$KUBECONFIG
+                    '''
+                }
             }
         }
     }
