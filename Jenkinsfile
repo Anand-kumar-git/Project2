@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_REPO = "anand20003/project2"
         AWS_REGION  = "us-east-1"
-        IMAGE_TAG   = "${env.BUILD_NUMBER}"   // unique tag for each build
+        IMAGE_TAG   = "${env.BUILD_NUMBER}"   
     }
 
     stages {
@@ -62,10 +62,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment successful!"
+            echo "Deployment successful!"
         }
         failure {
-            echo "❌ Deployment failed. Check logs in Jenkins!"
+            echo "Deployment failed. Check logs in Jenkins!"
         }
     }
 }
