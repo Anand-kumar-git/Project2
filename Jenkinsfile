@@ -14,7 +14,7 @@ pipeline {
             }
         }
 
-        stage('Build Docker Imge') {
+        stage('Build Docker Image') {
             steps {
                 sh 'docker build -t $DOCKER_IMAGE:$BUILD_NUMBER .'
                 sh 'docker tag $DOCKER_IMAGE:$BUILD_NUMBER $DOCKER_IMAGE:latest'
@@ -31,16 +31,26 @@ pipeline {
 
         stage('Test Kubeconfig') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG')]) {
-                    sh 'kubectl get nodes --kubeconfig=$KUBECONFIG'
+                withCredentials([
+                    file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG'),
+                    usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                    export AWS_REGION=us-east-1
+                    kubectl get nodes --kubeconfig=$KUBECONFIG
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG')]) {
+                withCredentials([
+                    file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG'),
+                    usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
                     sh '''
+                    export AWS_REGION=us-east-1
                     kubectl set image deployment/myapp-deployment myapp=$DOCKER_IMAGE:$BUILD_NUMBER --kubeconfig=$KUBECONFIG
                     kubectl rollout status deployment/myapp-deployment --kubeconfig=$KUBECONFIG
                     '''
