@@ -42,17 +42,20 @@ pipeline {
 
         stage('Deploy to EKS') {
             steps {
-                sh """
-                    echo "Updating kubeconfig..."
-                    aws eks update-kubeconfig --region ${AWS_REGION} --name my-cluster
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-creds']]) {
+                    sh """
+                        echo "Updating kubeconfig..."
+                        aws eks update-kubeconfig --region ${AWS_REGION} --name my-cluster
 
-                    echo "Deploying to Kubernetes..."
-                    kubectl set image deployment/myapp-deployment myapp=${DOCKER_REPO}:${IMAGE_TAG} || true
+                        echo "Deploying to Kubernetes..."
+                        kubectl set image deployment/myapp-deployment myapp=${DOCKER_REPO}:${IMAGE_TAG} || true
 
-                    # Apply Kubernetes manifests
-                    kubectl apply -f deployment.yaml
-                    kubectl apply -f service.yaml
-                """
+                        # Apply Kubernetes manifests from k8s folder
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                    """
+                }
             }
         }
     }
